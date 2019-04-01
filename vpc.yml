@@ -1,23 +1,19 @@
 AWSTemplateFormatVersion: '2010-09-09'
 # Genial este sera un pinche comentario :D 
 # vamos a crear primero nuestro VPC XD 
+Metadata:
+  License: Apache-2.0
+Description: 'AWS CloudFormation Project'
 Parameters:
   CidrBlock:
     Description: Please enter the IP range (CIDR notation) for this VPC
     Type: String
     Default: 10.10.0.0/16
-    Parameters:
+    
+  LatestAmiId:
+    Type:  'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
 
-  KeyPair:
-    Description: Name of an existing EC2 KeyPair to enable SSH access to the container
-      instances
-    Type: AWS::EC2::KeyPair::KeyName
-    ConstraintDescription: Must be a valid EC2 keypair.
-
-  CidrBlock:
-    Description: Please enter the IP range (CIDR notation) for this VPC
-    Type: String
-    Default: 10.10.0.0/16
 Resources:
   VPC:
     Type: AWS::EC2::VPC
@@ -203,6 +199,67 @@ Resources:
         - Key: Name
           Value: !Sub "${AWS::StackName} SGContainerInstance"
 
+  MyEC2Instance1:
+    Type: AWS::EC2::Instance
+    Metadata:
+      AWS::CloudFormation::Init:
+        config:
+          packages:
+            yum:
+              httpd: []
+          files:
+            /var/www/html/index.html:
+              content: 
+                <html>
+                  <h1>Congratulations, you have successfully launched
+                    the AWS CloudFormation sample.</h1>
+                </html>
+              mode: '000644'
+              owner: root
+              group: root
+          services:
+            sysvinit:
+              httpd:
+                enabled: 'true'
+                ensureRunning: 'true'
+              cfn-hup:
+                enabled: 'true'
+                ensureRunning: 'true'
+                files: [/etc/cfn/cfn-hup.conf, /etc/cfn/hooks.d/cfn-auto-reloader.conf]
+    Properties:
+      InstanceType: 't2.micro'
+      SecurityGroups: [!Ref 'InstanceSecurityGroup']
+      KeyName: 'demo'
+      ImageId: !Ref 'LatestAmiId'
+  MyEC2Instance2:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: 't2.micro'
+      SecurityGroups: [!Ref 'InstanceSecurityGroup']
+      KeyName: 'demo'
+      ImageId: !Ref 'LatestAmiId'
+  ElasticLoadBalancer:
+    Type: AWS::ElasticLoadBalancing::LoadBalancer
+    Properties:
+      AvailabilityZones:
+        Fn::GetAZs: ''
+      Instances:
+      - Ref: MyEC2Instance1
+      - Ref: MyEC2Instance2
+      Listeners:
+      - LoadBalancerPort: '80'
+        InstancePort: '80'
+        Protocol: HTTP
+      HealthCheck:
+        Target: HTTP:80/
+        HealthyThreshold: '3'
+        UnhealthyThreshold: '5'
+        Interval: '30'
+        Timeout: '5'
+      ConnectionDrainingPolicy:
+        Enabled: 'true'
+        Timeout: '60'
+
 Outputs:
   VPC:
     Description: A reference to the created VPC
@@ -233,4 +290,19 @@ Outputs:
     Value: !Ref mySubnetPrivada2
     Export:
       Name: "mySubnetPrivada2"
-      
+
+  InstanceId1:
+    Description: InstanceId of the newly created EC2 instance
+    Value: !Ref 'MyEC2Instance1'
+  InstanceId2:
+    Description: InstanceId of the newly created EC2 instance
+    Value: !Ref 'MyEC2Instance2'
+  AZ:
+    Description: Availability Zone of the newly created EC2 instance
+    Value: !GetAtt [MyEC2Instance1, AvailabilityZone]
+  PublicDNS:
+    Description: Public DNSName of the newly created EC2 instance
+    Value: !GetAtt [MyEC2Instance1, PublicDnsName]
+  PublicIP:
+    Description: Public IP address of the newly created EC2 instance
+    Value: !GetAtt [MyEC2Instance1, PublicIp]
