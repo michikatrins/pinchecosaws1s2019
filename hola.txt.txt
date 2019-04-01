@@ -1,1 +1,105 @@
 hola mundo
+que tal 
+
+
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Metadata:
+    AWS::CloudFormation::Init:
+    config:
+      packages:
+        yum:
+          httpd: []
+      files:
+        "/var/www/html/index.html":
+          content: |
+            <html>
+              <body>
+              <h1>hola</h1>
+              </body>
+            </html>
+          mode: '000644'
+          owner: root
+          group: root
+        services:
+          sysvinit:
+            httpd:
+              enabled: 'true'
+              ensureRunning: 'true'
+    Properties:
+      ImageId: !FindInMap [RegionMap, !Ref 'AWS::Region', 'AMI']
+      InstanceType: t2.micro
+      KeyName: !Ref KeyNamessh
+      SecurityGroupIds:
+        - Fn::ImportValue:
+            "demo-sg-ecs"
+      SubnetId:
+        Fn::ImportValue:
+          "demo-PrivateSubnet1"
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName} Container Instance"
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          yum -y update
+          yum install -y aws-cfn-bootstrap aws-cli
+          echo ECS_CLUSTER=${ECSCluster} >> /etc/ecs/ecs.config
+          # SSM Agent
+          cd /tmp
+          sudo yum install -y https://s3.amazonaws.com/ec2-downloads-windows/SSMAgent/latest/linux_amd64/amazon-ssm-agent.rpm
+
+          
+
+
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Metadata:
+    AWS::CloudFormation::Init:
+    config:
+      packages:
+        yum:
+          httpd: []
+      files:
+        "/var/www/html/index.html":
+          content: |
+            <html>
+              <body>
+              <h1>hola</h1>
+              </body>
+            </html>
+          mode: '000644'
+          owner: root
+          group: root
+        services:
+          sysvinit:
+            httpd:
+              enabled: 'true'
+              ensureRunning: 'true'
+    Properties:
+      AvailabilityZone: !Select [ 0, !GetAZs { Ref: "AWS::Region" } ]
+      IamInstanceProfile: !Ref ContainerInstanceProfile
+      ImageId: !Ref ECSAMI
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyPair
+      SecurityGroupIds:
+        - Fn::ImportValue:
+            "demo-sg-ecs"
+      SubnetId:
+        Fn::ImportValue:
+          "demo-PrivateSubnet1"
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName} Container Instance"
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          yum -y update
+          yum install -y aws-cfn-bootstrap aws-cli
+          echo ECS_CLUSTER=${ECSCluster} >> /etc/ecs/ecs.config
+          # SSM Agent
+          cd /tmp
+          sudo yum install -y https://s3.amazonaws.com/ec2-downloads-windows/SSMAgent/latest/linux_amd64/amazon-ssm-agent.rpm
+
+#vamos a crear la parte de los Security Groups
+#es el que permite el trafico de entrada y salida

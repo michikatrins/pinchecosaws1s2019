@@ -1,0 +1,100 @@
+# The MIT License (MIT)
+# 
+# Copyright (c) 2016 widdix GmbH
+# 
+# Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+# 
+# The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'AWS EC2 SSH access with IAM showcase using RPM'
+Mappings:
+  OSMap:
+    AmazonLinux:
+      RegionMap: RegionMapAmazonLinux
+      UserData: |
+        trap '/opt/aws/bin/cfn-signal -e 1 --stack=${STACKNAME} --region=${REGION} --resource=Instance' ERR
+        /opt/aws/bin/cfn-init --verbose --stack=${STACKNAME} --region=${REGION} --resource=Instance
+        /opt/aws/bin/cfn-signal -e 0 --stack=${STACKNAME} --region=${REGION} --resource=Instance
+  RegionMapAmazonLinux:
+    'ap-south-1':
+      AMI: 'ami-531a4c3c'
+    'eu-west-3':
+      AMI: 'ami-8ee056f3'
+    'eu-west-2':
+      AMI: 'ami-403e2524'
+    'eu-west-1':
+      AMI: 'ami-d834aba1'
+    'ap-northeast-2':
+      AMI: 'ami-863090e8'
+    'ap-northeast-1':
+      AMI: 'ami-ceafcba8'
+    'sa-east-1':
+      AMI: 'ami-84175ae8'
+    'ca-central-1':
+      AMI: 'ami-a954d1cd'
+    'ap-southeast-1':
+      AMI: 'ami-68097514'
+    'ap-southeast-2':
+      AMI: 'ami-942dd1f6'
+    'eu-central-1':
+      AMI: 'ami-5652ce39'
+    'us-east-1':
+      AMI: 'ami-97785bed'
+    'us-east-2':
+      AMI: 'ami-f63b1193'
+    'us-west-1':
+      AMI: 'ami-824c4ee2'
+    'us-west-2':
+      AMI: 'ami-f2d3638a'
+Resources:
+  Instance:
+    Type: AWS::EC2::Instance
+    Metadata:
+      'AWS::CloudFormation::Init':
+        configSets:
+          default: [!Sub 'prepare${OS}', install]
+        prepareAmazonLinux:
+          packages:
+            yum:
+              git: []
+        install:
+          packages:
+            rpm:
+              aws-ec2-ssh: !Sub 'https://s3-eu-west-1.amazonaws.com/widdix-aws-ec2-ssh-releases-eu-west-1/aws-ec2-ssh-${Version}.el7.centos.noarch.rpm'
+          commands:
+            a_enable:
+              command: "sed -i 's/DONOTSYNC=1/DONOTSYNC=0/g' /etc/aws-ec2-ssh.conf && /usr/bin/import_users.sh"
+              test: "grep -q 'DONOTSYNC=1' /etc/aws-ec2-ssh.conf"
+    Properties:
+      ImageId: !FindInMap [RegionMap, !Ref 'AWS::Region', AMI]
+      IamInstanceProfile: !Ref InstanceProfile
+      InstanceType: 't2.micro'
+      KeyName: !If [HasKeyName, !Ref KeyName, !Ref 'AWS::NoValue']
+      UserData:
+        'Fn::Base64': !Sub
+          - |
+              #!/bin/bash -ex
+              export REGION=${AWS::Region}
+              export STACKNAME=${AWS::StackName}
+              ${UserData}
+          - UserData: !FindInMap [OSMap, !Ref OS, UserData]
+      NetworkInterfaces:
+      - AssociatePublicIpAddress: true
+        DeleteOnTermination: true
+        SubnetId: !Ref Subnet
+        DeviceIndex: 0
+        GroupSet:
+        - !Ref SecurityGroup
+      Tags:
+      - Key: Name
+        Value: 'AWS EC2 SSH access with IAM showcase'
+    CreationPolicy:
+      ResourceSignal:
+        Count: 1
+        Timeout: PT20M
+Outputs:
+  PublicName:
+    Description: 'The public name of the EC2 instance.'
+    Value: !GetAtt 'Instance.PublicDnsName'

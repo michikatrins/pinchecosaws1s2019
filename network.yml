@@ -1,0 +1,186 @@
+AWSTemplateFormatVersion: '2010-09-09'
+# Genial este sera un pinche comentario :D 
+# vamos a crear primero nuestro VPC XD 
+Parameters:
+  CidrBlock:
+    Description: Please enter the IP range (CIDR notation) for this VPC
+    Type: String
+    Default: 10.10.0.0/16
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 
+        Ref: CidrBlock
+      EnableDnsSupport: 'false'
+      EnableDnsHostnames: 'false'
+      InstanceTenancy: dedicated
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName} Vpc
+
+# vamos a crear un gateaway para nuestro vpc y asi este tenga salida de internet
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName} MyInternetGateway
+
+#vamos a atachear nuestro internetGateway con nuestra VPC :D 
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: 
+        Ref: InternetGateway
+      VpcId: 
+        Ref: VPC
+
+# Vamos a crear nuestras subnets 
+# crear subnet la cual sea publica 
+  mySubnetPublica1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: VPC
+      CidrBlock: !Select [0, !Cidr [!Ref CidrBlock, 4, 8]]
+      AvailabilityZone: !Select [ 0, !GetAZs { Ref: "AWS::Region" } ]
+      #AvailabilityZone: "us-west-1a"      
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName} PublicaSubnet1
+          
+  mySubnetPublica2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: VPC
+      CidrBlock: !Select [1, !Cidr [!Ref CidrBlock, 4, 8]]
+      AvailabilityZone: !Select [ 1, !GetAZs { Ref: "AWS::Region" } ]
+      #AvailabilityZone: "us-west-1b"      
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName} PublicaSubnet2
+
+  NatGatewayEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGatewayEIP.AllocationId
+      SubnetId: !Ref mySubnetPublica1
+
+# crear subnet la cual sea privada la 1 y la 2 
+  mySubnetPrivada1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      #AvailabilityZone: !Select [ 0, !GetAZs { Ref: "AWS::Region" } ]
+      CidrBlock: !Select [2, !Cidr [!Ref CidrBlock, 4, 8]] 
+      AvailabilityZone: !Select [ 0, !GetAZs { Ref: "AWS::Region" } ]
+      #AvailabilityZone: "us-west-1a"   
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName} SubnetPrivada1
+
+  mySubnetPrivada2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      #AvailabilityZone: !Select [ 0, !GetAZs { Ref: "AWS::Region" } ]
+      CidrBlock: !Select [3, !Cidr [!Ref CidrBlock, 4, 8]]
+      #AvailabilityZone: "us-west-1b"   
+      AvailabilityZone: !Select [ 1, !GetAZs { Ref: "AWS::Region" } ]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName} SubnetPrivada2
+
+#vamos a crear unas tablas de rutas 
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName} RutasPublica
+
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName} rutasPrivada
+
+#vamos a asociar a las tablas 
+#las publicas tienen internet
+#mientras que las otras no :/
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref mySubnetPublica1
+      
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref mySubnetPublica2
+
+  PrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref mySubnetPrivada1
+
+  PrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref mySubnetPrivada2
+
+Outputs:
+  VPC:
+    Description: A reference to the created VPC
+    Value: !Ref VPC
+    Export:
+      Name: "VPC"
+
+  mySubnetPublica1:
+    Description: A reference to the public subnet in the 1st Availability Zone
+    Value: !Ref mySubnetPublica1
+    Export:
+      Name: "mySubnetPublica1"
+
+  mySubnetPublica2:
+    Description: A reference to the public subnet in the 2nd Availability Zone
+    Value: !Ref mySubnetPublica2
+    Export:
+      Name: "mySubnetPublica2"
+
+  mySubnetPrivada1:
+    Description: A reference to the private subnet in the 1st Availability Zone
+    Value: !Ref mySubnetPrivada1
+    Export:
+      Name: "mySubnetPrivada1"
+
+  mySubnetPrivada2:
+    Description: A reference to the private subnet in the 2nd Availability Zone
+    Value: !Ref mySubnetPrivada2
+    Export:
+      Name: "mySubnetPrivada2"
